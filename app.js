@@ -10,7 +10,7 @@ const logger = require("./middleware/logger");
 const userApi = require("./route/user.routes");
 const postApi = require("./route/post.route");
 const relationship=require("./route/user.post.route")
-
+const authRoutes=require("./route/auth.route")
 const app = express();
 
 // Security
@@ -47,7 +47,7 @@ app.use(logger);
 app.use("/api/user", userApi);
 app.use("/api/post", postApi);
 app.use("/api/relationship",relationship)
-
+app.use("/api/auth",authRoutes)
 // 404
 app.use(notFound);
 

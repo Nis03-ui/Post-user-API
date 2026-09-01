@@ -1,4 +1,3 @@
-
 const prisma = require("../config/db");
 
 
@@ -13,33 +12,60 @@ exports.createPost = async (data) => {
 
   return post;
 };
-exports.getAllPosts=async()=>{
-    const posts=await prisma.post.findMany()
-    return posts
-}
 
-exports.getPost=async(id)=>{
-    const post=await prisma.post.findUnique({
-        where:{
-            id
-        }
-    })
-    return post
-}
 
-exports.upadatePost=async(data,id)=>{
-   
+exports.getAllPosts = async () => {
+  return await prisma.post.findMany();
+};
 
-    const updatedPost=await prisma.post.update({
-        where:{
-            id
-        },
-        data
-    })
-    return updatedPost
-}
 
-exports.deletePost=async(id)=>{
-    const deletedPost=await prisma.post.delete(id)
-    return deletedPost
-}
+exports.getPost = async (id) => {
+  return await prisma.post.findUnique({
+    where: {
+      id
+    }
+  });
+};
+
+
+exports.updatePost = async (id, userId, data) => {
+
+  const post = await prisma.post.findFirst({
+    where: {
+      id,
+      authorId: userId
+    }
+  });
+
+  if (!post) {
+    return null;
+  }
+
+  return await prisma.post.update({
+    where: {
+      id: post.id
+    },
+    data
+  });
+};
+
+
+exports.deletePost = async (id, userId) => {
+
+  const post = await prisma.post.findFirst({
+    where: {
+      id,
+      authorId: userId
+    }
+  });
+
+  if (!post) {
+    return null;
+  }
+
+  return await prisma.post.delete({
+    where: {
+      id: post.id
+    }
+  });
+};
