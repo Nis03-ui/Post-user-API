@@ -4,7 +4,13 @@ const {
   hashPassword: hashPasswordService,
   createUser: createUserService,
   comparePassword:comparePasswordService,
-  generateToken:generateTokenService
+  generateToken:generateTokenService,
+  generateAccessToken:generateAccessTokenService,
+  generateRefreshToken:generateRefreshTokenService,
+  hashRefershToken,
+  calculateExpiryDate,
+  createRefreshToken
+
 } = require("../service/auth.service");
 
 const { ApiError } = require("../utils/ApiError");
@@ -39,6 +45,8 @@ exports.register = asyncHandler(async (req, res) => {
   });
 });
 
+
+
 exports.login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -57,12 +65,31 @@ exports.login = asyncHandler(async (req, res) => {
     throw new ApiError("Invalid email or password", 401);
   }
 
-  const token = generateTokenService(user.id);
+  const accessToken = generateAccessTokenService(user.id);
+
+const refreshToken = generateRefreshTokenService(user.id);
+
+const tokenHash = hashRefreshToken(refreshToken);
+
+const expiresAt = calculateExpiryDate();
+
+await createRefreshToken(
+  user.id,
+  tokenHash,
+  expiresAt
+);
+res.cookie("refreshToken", refreshToken, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  maxAge: 7 * 24 * 60 * 60 * 1000
+});
+ 
 
   return res.status(200).json({
     success: true,
     message: "Login successful",
-    token,
+    accessToken,
     user: {
       id: user.id,
       name: user.name,
