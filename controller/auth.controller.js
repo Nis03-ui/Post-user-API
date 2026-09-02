@@ -1,20 +1,29 @@
-const { success } = require("zod");
 const {
   userExists: userExistsService,
   hashPassword: hashPasswordService,
   createUser: createUserService,
-  comparePassword:comparePasswordService,
-  generateToken:generateTokenService,
-  generateAccessToken:generateAccessTokenService,
-  generateRefreshToken:generateRefreshTokenService,
-  hashRefershToken,
-  calculateExpiryDate,
-  createRefreshToken
+  comparePassword: comparePasswordService,
 
+  generateAccessToken: generateAccessTokenService,
+  generateRefreshToken: generateRefreshTokenService,
+
+  hashRefreshToken,
+  calculateExpiryDate,
+  createRefreshToken,
+  findRefreshToken,
+  deleteRefreshToken,
+  verifyRefreshToken
 } = require("../service/auth.service");
 
 const { ApiError } = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
+
+
+/*
+|--------------------------------------------------------------------------
+| REGISTER
+|--------------------------------------------------------------------------
+*/
 
 exports.register = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
@@ -46,6 +55,11 @@ exports.register = asyncHandler(async (req, res) => {
 });
 
 
+/*
+|--------------------------------------------------------------------------
+| LOGIN
+|--------------------------------------------------------------------------
+*/
 
 exports.login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -65,26 +79,35 @@ exports.login = asyncHandler(async (req, res) => {
     throw new ApiError("Invalid email or password", 401);
   }
 
-  const accessToken = generateAccessTokenService(user.id);
+  // Access token
+  const accessToken =
+    generateAccessTokenService(user.id);
 
-const refreshToken = generateRefreshTokenService(user.id);
+  // Refresh token
+  const refreshToken =
+    generateRefreshTokenService(user.id);
 
-const tokenHash = hashRefreshToken(refreshToken);
+  // Hash refresh token before storing
+  const tokenHash =
+    hashRefreshToken(refreshToken);
 
-const expiresAt = calculateExpiryDate();
+  // Database expiration
+  const expiresAt =
+    calculateExpiryDate();
 
-await createRefreshToken(
-  user.id,
-  tokenHash,
-  expiresAt
-);
-res.cookie("refreshToken", refreshToken, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
-  maxAge: 7 * 24 * 60 * 60 * 1000
-});
- 
+  await createRefreshToken(
+    user.id,
+    tokenHash,
+    expiresAt
+  );
+
+  // Store raw refresh token only in httpOnly cookie
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
 
   return res.status(200).json({
     success: true,
@@ -98,9 +121,128 @@ res.cookie("refreshToken", refreshToken, {
   });
 });
 
-exports.getMe=asyncHandler(async(req,res)=>{
-    return res.status(200).json({
-        success:true,
-        message:"Successfully retrieved"
-    })
-})
+
+/*
+|--------------------------------------------------------------------------
+| GET ME
+|--------------------------------------------------------------------------
+*/
+
+exports.getMe = asyncHandler(async (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "Successfully retrieved",
+    user: req.user
+  });
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| REFRESH ACCESS TOKEN
+|--------------------------------------------------------------------------
+*/
+
+exports.refresh = asyncHandler(async (req, res) => {
+
+  // 1. Get refresh token from cookie
+  const { refreshToken } = req.cookies;
+
+  if (!refreshToken) {
+    throw new ApiError(
+      "Refresh token required",
+      401
+    );
+  }
+
+  // 2. Hash incoming refresh token
+  const tokenHash =
+    hashRefreshToken(refreshToken);
+
+  // 3. Find token in database
+  const storedToken =
+    await findRefreshToken(tokenHash);
+
+  if (!storedToken) {
+    throw new ApiError(
+      "Invalid refresh token",
+      401
+    );
+  }
+
+  // 4. Check database expiration
+  if (storedToken.expiresAt < new Date()) {
+    throw new ApiError(
+      "Refresh token expired",
+      401
+    );
+  }
+
+  // 5. Verify JWT
+  let decoded;
+
+  try {
+    decoded =
+      verifyRefreshToken(refreshToken);
+  } catch (error) {
+    throw new ApiError(
+      "Invalid or expired refresh token",
+      401
+    );
+  }
+
+  // 6. Verify token belongs to same user
+  if (decoded.id !== storedToken.userId) {
+    throw new ApiError(
+      "Invalid refresh token",
+      401
+    );
+  }
+
+  // 7. Generate new access token
+  const accessToken =
+    generateAccessTokenService(decoded.id);
+
+  return res.status(200).json({
+    success: true,
+    message: "Access token refreshed",
+    accessToken
+  });
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| LOGOUT
+|--------------------------------------------------------------------------
+*/
+
+exports.logout = asyncHandler(async (req, res) => {
+
+  const { refreshToken } = req.cookies;
+
+  if (refreshToken) {
+
+    const tokenHash =
+      hashRefreshToken(refreshToken);
+
+    const storedToken =
+      await findRefreshToken(tokenHash);
+
+    if (storedToken) {
+      await deleteRefreshToken(tokenHash);
+    }
+  }
+
+  // Remove cookie from browser
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict"
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Logout successful"
+  });
+});

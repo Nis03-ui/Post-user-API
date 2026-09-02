@@ -3,6 +3,13 @@ const prisma = require("../config/db");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
+
+/*
+|--------------------------------------------------------------------------
+| USER
+|--------------------------------------------------------------------------
+*/
+
 exports.userExists = async (email) => {
   return await prisma.user.findUnique({
     where: {
@@ -11,9 +18,11 @@ exports.userExists = async (email) => {
   });
 };
 
+
 exports.hashPassword = async (password) => {
   return await bcrypt.hash(password, 10);
 };
+
 
 exports.createUser = async (data) => {
   return await prisma.user.create({
@@ -21,41 +30,99 @@ exports.createUser = async (data) => {
   });
 };
 
-exports.comparePassword = async (password, hashedPassword) => {
-  return await bcrypt.compare(password, hashedPassword);
+
+exports.comparePassword = async (
+  password,
+  hashedPassword
+) => {
+  return await bcrypt.compare(
+    password,
+    hashedPassword
+  );
 };
 
-exports.generateToken = (id) => {
+
+/*
+|--------------------------------------------------------------------------
+| ACCESS TOKEN
+|--------------------------------------------------------------------------
+*/
+
+exports.generateAccessToken = (id) => {
   return jwt.sign(
     { id },
-    process.env.JWT_SECRET,
+    process.env.ACCESS_TOKEN_SECRET,
+    {
+      expiresIn: "15m"
+    }
+  );
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| REFRESH TOKEN
+|--------------------------------------------------------------------------
+*/
+
+exports.generateRefreshToken = (id) => {
+  return jwt.sign(
+    { id },
+    process.env.REFRESH_TOKEN_SECRET,
     {
       expiresIn: "7d"
     }
   );
 };
-exports.generateAccessToken = (id) => {
- 
-  return jwt.sign(
-    {id},
-    process.env.ACCESS_TOKEN_SECERT,
-    {
-      expiresIn:"15m"
-    }
-  )
+
+
+exports.verifyRefreshToken = (token) => {
+  return jwt.verify(
+    token,
+    process.env.REFRESH_TOKEN_SECRET
+  );
 };
 
-exports.generateRefreshToken = (id) => {
 
-  return jwt.sign(
-    {id},
-    process.env.REFRESH_TOKEN_SECERT,
-    {
-      expiresIn:"7d"
-    }
-  )
+/*
+|--------------------------------------------------------------------------
+| REFRESH TOKEN HASH
+|--------------------------------------------------------------------------
+*/
+
+exports.hashRefreshToken = (token) => {
+  return crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
 };
-exports.createRefreshToken = async (userId, tokenHash, expiresAt) => {
+
+
+/*
+|--------------------------------------------------------------------------
+| REFRESH TOKEN EXPIRATION
+|--------------------------------------------------------------------------
+*/
+
+exports.calculateExpiryDate = () => {
+  return new Date(
+    Date.now() +
+      7 * 24 * 60 * 60 * 1000
+  );
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| REFRESH TOKEN DATABASE
+|--------------------------------------------------------------------------
+*/
+
+exports.createRefreshToken = async (
+  userId,
+  tokenHash,
+  expiresAt
+) => {
   return await prisma.refreshToken.create({
     data: {
       userId,
@@ -65,15 +132,20 @@ exports.createRefreshToken = async (userId, tokenHash, expiresAt) => {
   });
 };
 
-exports.hashRefershToken=(token)=>{
-  return crypto
-  .createHash("sha256")
-  .update(token)
-  .digest("hex");
-}
 
-exports.calculateExpiryDate = () => {
-  return new Date(
-    Date.now() + 7 * 24 * 60 * 60 * 1000
-  );
+exports.findRefreshToken = async (tokenHash) => {
+  return await prisma.refreshToken.findUnique({
+    where: {
+      tokenHash
+    }
+  });
+};
+
+
+exports.deleteRefreshToken = async (tokenHash) => {
+  return await prisma.refreshToken.delete({
+    where: {
+      tokenHash
+    }
+  });
 };
